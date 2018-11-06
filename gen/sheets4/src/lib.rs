@@ -3731,8 +3731,9 @@ impl RequestValue for BatchUpdateSpreadsheetRequest {}
 /// method in iOS; and, with just a little work, it can be easily formatted into
 /// a CSS "rgba()" string in JavaScript, as well. Here are some examples:
 /// 
-/// Example (Java):
-/// 
+/// Examples:
+///
+/// ```Java,ignore
 ///      import com.google.type.Color;
 /// 
 ///      // ...
@@ -3770,9 +3771,8 @@ impl RequestValue for BatchUpdateSpreadsheetRequest {}
 ///        return resultBuilder.build();
 ///      }
 ///      // ...
-/// 
-/// Example (iOS / Obj-C):
-/// 
+/// ```
+/// ```Objective-C,ignore
 ///      // ...
 ///      static UIColor* fromProto(Color* protocolor) {
 ///         float red = [protocolor red];
@@ -3802,9 +3802,8 @@ impl RequestValue for BatchUpdateSpreadsheetRequest {}
 ///          return result;
 ///     }
 ///     // ...
-/// 
-///  Example (JavaScript):
-/// 
+/// ```
+/// ```JavaScript,ignore
 ///     // ...
 /// 
 ///     var protoToCssColor = function(rgb_color) {
@@ -3837,7 +3836,8 @@ impl RequestValue for BatchUpdateSpreadsheetRequest {}
 ///     };
 /// 
 ///     // ...
-/// 
+/// ```
+///
 /// This type is not used in any activity, and only used as *part* of another schema.
 /// 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
