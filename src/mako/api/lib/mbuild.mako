@@ -10,8 +10,8 @@
                       CALL_BUILDER_MARKERT_TRAIT, pass_through, markdown_rust_block, parts_from_params,
                       DELEGATE_PROPERTY_NAME, struct_type_bounds_s, scope_url_to_variant,
                       re_find_replacements, ADD_PARAM_FN, ADD_PARAM_MEDIA_EXAMPLE, upload_action_fn, METHODS_RESOURCE,
-                      method_name_to_variant, unique_type_name, size_to_bytes, method_default_scope,
-                      is_repeated_property, setter_fn_name, ADD_SCOPE_FN, rust_doc_sanitize)
+                      method_name_to_variant, size_to_bytes, method_default_scope,
+                      is_repeated_property, setter_fn_name, ADD_SCOPE_FN, rust_doc_sanitize, items)
 
     def get_parts(part_prop):
         if not part_prop:
@@ -70,7 +70,7 @@ ${m.description | rust_doc_sanitize, rust_doc_comment}
 % endif
 % if response_schema:
 /// Please note that due to missing multi-part support on the server side, you will only receive the media,
-/// but not the `${unique_type_name(response_schema.id)}` structure that you would usually get. The latter will be a default value.
+/// but not the `${response_schema.id}` structure that you would usually get. The latter will be a default value.
 % endif
 ///
 % endif ## supports media download
@@ -154,7 +154,7 @@ ${self._setter_fn(resource, method, m, p, part_prop, ThisType, c)}\
     ///
     /// # Additional Parameters
     ///
-    % for opn, op in list((opn, op) for (opn, op) in parameters.iteritems() if opn not in [p.name for p in params]):
+    % for opn, op in list((opn, op) for (opn, op) in parameters.items() if opn not in [p.name for p in params]):
     /// * *${opn}* (${op.location}-${op.type}) - ${op.description}
     % endfor
     % endif
@@ -316,12 +316,12 @@ ${self._setter_fn(resource, method, m, p, part_prop, ThisType, c)}\
     test_fn_filter = rust_doc and rust_test_fn_invisible or pass_through
 
     if request_value:
-        request_value_type = unique_type_name(request_value.id)
+        request_value_type = request_value.id
 %>\
 <%block filter="test_block_filter">\
 ${capture(util.test_prelude) | hide_filter}\
 % if request_value:
-use ${util.library_name()}::${request_value_type};
+use ${util.library_name()}::api::${request_value_type};
 % endif
 % if handle_result:
 use ${util.library_name()}::{Result, Error};
@@ -336,7 +336,7 @@ ${capture(lib.test_hub, hub_type_name, comments=show_all) | hide_filter}
 // into the respective structure. Some of the parts shown here might not be applicable !
 // ${random_value_warning}
 let mut ${rb_name} = ${request_value_type}::default();
-% for spn, sp in request_value.get('properties', dict()).iteritems():
+% for spn, sp in items(request_value.get('properties', dict())):
 % if parts is not None and spn not in parts:
 <% continue %>
 % endif
@@ -412,7 +412,7 @@ match result {
     where = ''
     qualifier = 'pub '
     add_args = ''
-    rtype = 'Result<hyper::client::Response>'
+    rtype = 'client::Result<hyper::client::Response>'
     response_schema = method_response(c, m)
 
     supports_download = m.get('supportsMediaDownload', False);
@@ -420,7 +420,7 @@ match result {
     if response_schema:
         if not supports_download:
             reserved_params = ['alt']
-        rtype = 'Result<(hyper::client::Response, %s)>' % (unique_type_name(response_schema.id))
+        rtype = 'client::Result<(hyper::client::Response, %s)>' % (response_schema.id)
 
     mtype_param = 'RS'
 
@@ -430,7 +430,7 @@ match result {
     if media_params:
         type_params = '<%s>' % mtype_param
         qualifier = ''
-        where = '\n\t\twhere ' + mtype_param + ': ReadSeek'
+        where = '\n\t\twhere ' + mtype_param + ': client::ReadSeek'
         add_args = (', mut reader: %s, reader_mime_type: mime::Mime' % mtype_param) + ", protocol: &'static str"
         for p in media_params:
             if p.protocol == 'simple':
@@ -465,7 +465,7 @@ match result {
     if media_params:
         max_size = media_params[0].max_size
         if max_size > 0:
-            READER_SEEK += "if size > %i {\n\treturn Err(Error::UploadSizeLimitExceeded(size, %i))\n}" % (max_size, max_size)
+            READER_SEEK += "if size > %i {\n\treturn Err(client::Error::UploadSizeLimitExceeded(size, %i))\n}" % (max_size, max_size)
 
     special_cases = set()
     for possible_url in possible_urls:
@@ -505,12 +505,13 @@ match result {
         % endif
         use std::io::{Read, Seek};
         use hyper::header::{ContentType, ContentLength, Authorization, Bearer, UserAgent, Location};
-        let mut dd = DefaultDelegate;
-        let mut dlg: &mut dyn Delegate = match ${delegate} {
+        use client::ToParts;
+        let mut dd = client::DefaultDelegate;
+        let mut dlg: &mut dyn client::Delegate = match ${delegate} {
             Some(d) => d,
             None => &mut dd
         };
-        dlg.begin(MethodInfo { id: "${m.id}",
+        dlg.begin(client::MethodInfo { id: "${m.id}",
                                http_method: ${method_name_to_variant(m.httpMethod)} });
         let mut params: Vec<(&str, String)> = Vec::with_capacity(${len(params) + len(reserved_params)} + ${paddfields}.len());
 <%
@@ -529,6 +530,11 @@ match result {
 %>\
         ## parts can also be derived from the request, but we do that only if it's not set
         % if p.name == 'part' and request_value:
+        % if is_repeated_property(p):
+        if ${pname}.is_empty() {
+            ${pname}.push(self.${property(REQUEST_VALUE_PROPERTY_NAME)}.to_parts());
+        }
+        % else:
         % if not is_required_property(p):
         if ${pname}.is_none() {
             ${pname} = Some(self.${property(REQUEST_VALUE_PROPERTY_NAME)}.to_parts());
@@ -537,7 +543,8 @@ match result {
         if ${pname}.len() == 0 {
             ${pname} = self.${property(REQUEST_VALUE_PROPERTY_NAME)}.to_parts();
         }
-        % endif ## not is_required_property(p):
+        % endif ## not is_required_property(p)
+        % endif is_repeated_property(p):
         % endif ## p.name == 'part' and request_value:
         % if p.get('repeated', False):
         if ${pname}.len() > 0 {
@@ -557,7 +564,7 @@ match result {
         for &field in [${', '.join(enclose_in('"', reserved_params + [p.name for p in field_params]))}].iter() {
             if ${paddfields}.contains_key(field) {
                 ${delegate_finish}(false);
-                return Err(Error::FieldClash(field));
+                return Err(client::Error::FieldClash(field));
             }
         }
         for (name, value) in ${paddfields}.iter() {
@@ -620,7 +627,7 @@ else {
             Some(value) => params.push(("key", value)),
             None => {
                 ${delegate_finish}(false);
-                return Err(Error::MissingAPIKey)
+                return Err(client::Error::MissingAPIKey)
             }
         }
         % endif
@@ -678,7 +685,7 @@ else {
         let mut request_value_reader =
             {
                 let mut value = json::value::to_value(&self.${property(REQUEST_VALUE_PROPERTY_NAME)}).expect("serde to work");
-                remove_json_null_values(&mut value);
+                client::remove_json_null_values(&mut value);
                 let mut dst = io::Cursor::new(Vec::with_capacity(128));
                 json::to_writer(&mut dst, &value).unwrap();
                 dst
@@ -702,7 +709,7 @@ else {
                         Some(token) => token,
                         None => {
                             ${delegate_finish}(false);
-                            return Err(Error::MissingToken(err))
+                            return Err(client::Error::MissingToken(err))
                         }
                     }
                 }
@@ -718,7 +725,7 @@ else {
                     should_ask_dlg_for_url = false;
                     upload_url_from_server = false;
                     let url = upload_url.as_ref().and_then(|s| Some(hyper::Url::parse(s).unwrap())).unwrap();
-                    hyper::client::Response::new(url, Box::new(cmn::DummyNetworkStream)).and_then(|mut res| {
+                    hyper::client::Response::new(url, Box::new(client::DummyNetworkStream)).and_then(|mut res| {
                         res.status = hyper::status::StatusCode::Ok;
                         res.headers.set(Location(upload_url.as_ref().unwrap().clone()));
                         Ok(res)
@@ -727,7 +734,7 @@ else {
             % endif
 <%block filter="indent_by(resumable_media_param and 4 or 0)">\
             % if request_value and simple_media_param:
-                let mut mp_reader: MultiPartReader = Default::default();
+                let mut mp_reader: client::MultiPartReader = Default::default();
                 let (mut body_reader, content_type) = match protocol {
                     "${simple_media_param.protocol}" => {
                         mp_reader.reserve_exact(2);
@@ -771,7 +778,7 @@ else {
                 % if resumable_media_param:
                 upload_url_from_server = true;
                 if protocol == "${resumable_media_param.protocol}" {
-                    req = req.header(cmn::XUploadContentType(reader_mime_type.clone()));
+                    req = req.header(client::XUploadContentType(reader_mime_type.clone()));
                 }
                 % endif
 
@@ -790,16 +797,16 @@ else {
                         continue;
                     }
                     ${delegate_finish}(false);
-                    return Err(Error::HttpError(err))
+                    return Err(client::Error::HttpError(err))
                 }
                 Ok(mut res) => {
                     if !res.status.is_success() {
                         let mut json_err = String::new();
                         res.read_to_string(&mut json_err).unwrap();
 
-                        let json_server_error = json::from_str::<JsonServerError>(&json_err).ok();
-                        let server_error = json::from_str::<ServerError>(&json_err)
-                            .or_else(|_| json::from_str::<ErrorResponse>(&json_err).map(|r| r.error))
+                        let json_server_error = json::from_str::<client::JsonServerError>(&json_err).ok();
+                        let server_error = json::from_str::<client::ServerError>(&json_err)
+                            .or_else(|_| json::from_str::<client::ErrorResponse>(&json_err).map(|r| r.error))
                             .ok();
 
                         if let oauth2::Retry::After(d) = dlg.http_failure(&res,
@@ -809,9 +816,9 @@ else {
                             continue;
                         }
                         ${delegate_finish}(false);
-                        return match json::from_str::<ErrorResponse>(&json_err){
-                            Err(_) => Err(Error::Failure(res)),
-                            Ok(serr) => Err(Error::BadRequest(serr))
+                        return match json::from_str::<client::ErrorResponse>(&json_err){
+                            Err(_) => Err(client::Error::Failure(res)),
+                            Ok(serr) => Err(client::Error::BadRequest(serr))
                         }
                     }
                     % if resumable_media_param:
@@ -824,7 +831,7 @@ else {
                                 dlg.store_upload_url(Some(url_str));
                             }
 
-                            cmn::ResumableUploadHelper {
+                            client::ResumableUploadHelper {
                                 client: &mut client.borrow_mut(),
                                 delegate: dlg,
                                 start_at: if upload_url_from_server { Some(0) } else { None },
@@ -840,12 +847,12 @@ else {
                         match upload_result {
                             None => {
                                 ${delegate_finish}(false);
-                                return Err(Error::Cancelled)
+                                return Err(client::Error::Cancelled)
                             }
                             Some(Err(err)) => {
                                 ## Do not ask the delgate again, as it was asked by the helper !
                                 ${delegate_finish}(false);
-                                return Err(Error::HttpError(err))
+                                return Err(client::Error::HttpError(err))
                             }
                             ## Now the result contains the actual resource, if any ... it will be
                             ## decoded next
@@ -855,7 +862,7 @@ else {
                                     ## delegate was called in upload() already - don't tell him again
                                     dlg.store_upload_url(None);
                                     ${delegate_finish}(false);
-                                    return Err(Error::Failure(res))
+                                    return Err(client::Error::Failure(res))
                                 }
                             }
                         }
@@ -874,7 +881,7 @@ if enable_resource_parsing \
                             Ok(decoded) => (res, decoded),
                             Err(err) => {
                                 dlg.response_json_decode_error(&json_response, &err);
-                                return Err(Error::JsonDecodeError(json_response, err));
+                                return Err(client::Error::JsonDecodeError(json_response, err));
                             }
                         }
                     }\
@@ -896,11 +903,11 @@ if enable_resource_parsing \
     % for p in media_params:
     ${p.description | rust_doc_sanitize, rust_doc_comment, indent_all_but_first_by(1)}
     ///
-    % for item_name, item in p.info.iteritems():
+    % for item_name, item in p.info.items():
     /// * *${split_camelcase_s(item_name)}*: ${isinstance(item, (list, tuple)) and put_and(enclose_in("'", item)) or str(item)}
     % endfor
     pub fn ${upload_action_fn(api.terms.upload_action, p.type.suffix)}<${mtype_param}>(self, ${p.type.arg_name}: ${mtype_param}, mime_type: mime::Mime) -> ${rtype}
-                where ${mtype_param}: ReadSeek {
+                where ${mtype_param}: client::ReadSeek {
         self.${api.terms.action}(${p.type.arg_name}, mime_type, "${p.protocol}")
     }
     % endfor

@@ -4,7 +4,7 @@
 
 <%
 	import os
-	import urllib2
+	import urllib
 	import json
 
 	apis = {}
@@ -23,7 +23,7 @@
 
 	if os.environ.get('FETCH_APIS') is not None:
 		discovery_url = 'https://www.googleapis.com/discovery/v1/'
-		apis = json.loads(urllib2.urlopen(discovery_url + "apis").read())
+		apis = json.loads(urllib.request.urlopen(discovery_url + "apis").read())
 
 		print('Loaded {} apis from Google'.format(len(apis['items'])))
 
@@ -46,7 +46,7 @@
 	if mako is not UNDEFINED:
 		post_processor_arg = '--post-process-python-module=%s' % mako.post_processor_module
 %>\
-% for an, versions in api.list.iteritems():
+% for an, versions in api.list.items():
 % if an in api.get('blacklist', list()):
 <% continue %>\
 % endif
@@ -62,7 +62,7 @@
 	def gen_type_cfg_path(id):
 		return '$(API_DIR)/type-' + id + '.yaml'
 
-	CMN_SRC = '/src/cmn.rs'
+	CMN_SRC = '/src/client.rs'
 
 	api_name = util.library_name(an, version)
 	api_target = util.target_directory_name(an, version, suffix)
@@ -98,10 +98,11 @@
 			api_info.append((api_target, api_clean, api_cargo, api_doc, api_crate_publish_file, gen_root))
 
 			space_join = lambda i: ' '.join(a[i] for a in api_info)
-	except:
+	except Exception as e:
 		print('Could not open JSON file at {}'.format(api_json))
+		print(e)
 %>\
-${api_common}: $(RUST_SRC)/${make.id}/cmn.rs $(lastword $(MAKEFILE_LIST)) ${gen_root_stamp}
+${api_common}: $(RUST_SRC)/${make.id}/client.rs $(lastword $(MAKEFILE_LIST)) ${gen_root_stamp}
 	@ echo "// COPY OF '$<'"  > $@
 	@ echo "// DO NOT EDIT"  >> $@
 	@cat $< >> $@

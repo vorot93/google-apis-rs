@@ -11,14 +11,13 @@ api:
     # It seems functions are containing illegal characters, like `@context`
     - kgsearch
     - mapsengine
+    - spanner
     - firebaserules
     - servicemanagement
     # defines its own `Option` type
     - serviceconsumermanagement
     # defines its own `Option` type
     - serviceuser
-    # introduces a struct named Delegate, but we have a trait of the same name.
-    - gmail
     # defines its own `Option` type
     - serviceusage
     # defines its own `Option` type

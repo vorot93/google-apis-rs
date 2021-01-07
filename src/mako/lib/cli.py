@@ -172,7 +172,7 @@ def to_cli_schema(c, schema):
             properties[e.type_value] = e
     # end handle enumerations
 
-    for pn, p in properties.iteritems():
+    for pn, p in util.items(properties):
         def set_nested_schema(ns):
             if ns.fields:
                 fd[pn] = ns
@@ -211,7 +211,7 @@ def to_cli_schema(c, schema):
 # documentation only
 def cli_schema_to_yaml(schema, prefix=''):
     if not prefix:
-        o = '%s%s:\n' % (prefix, util.unique_type_name(schema.id))
+        o = '%s%s:\n' % (prefix, schema.id)
     else:
         o = ''
     prefix += '  '

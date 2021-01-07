@@ -62,21 +62,19 @@ ADD_PARAM_MEDIA_EXAMPLE = "." + ADD_PARAM_FN + '("alt", "media")'
 SPACES_PER_TAB = 4
 
 NESTED_TYPE_SUFFIX = 'item'
-DELEGATE_TYPE = 'Delegate'
+DELEGATE_TYPE = 'client::Delegate'
 REQUEST_PRIORITY = 100
-REQUEST_MARKER_TRAIT = 'RequestValue'
-RESPONSE_MARKER_TRAIT = 'ResponseResult'
-RESOURCE_MARKER_TRAIT = 'Resource'
-CALL_BUILDER_MARKERT_TRAIT = 'CallBuilder'
-METHODS_BUILDER_MARKER_TRAIT = 'MethodsBuilder'
-PART_MARKER_TRAIT = 'Part'
-NESTED_MARKER_TRAIT = 'NestedType'
+REQUEST_MARKER_TRAIT = 'client::RequestValue'
+RESPONSE_MARKER_TRAIT = 'client::ResponseResult'
+RESOURCE_MARKER_TRAIT = 'client::Resource'
+CALL_BUILDER_MARKERT_TRAIT = 'client::CallBuilder'
+METHODS_BUILDER_MARKER_TRAIT = 'client::MethodsBuilder'
+PART_MARKER_TRAIT = 'client::Part'
+NESTED_MARKER_TRAIT = 'client::NestedType'
 REQUEST_VALUE_PROPERTY_NAME = 'request'
 DELEGATE_PROPERTY_NAME = 'delegate'
-TO_PARTS_MARKER = 'ToParts'
-UNUSED_TYPE_MARKER = 'UnusedType'
-
-RESERVED_TYPES = set(("Result", RESOURCE_MARKER_TRAIT, "Error"))
+TO_PARTS_MARKER = 'client::ToParts'
+UNUSED_TYPE_MARKER = 'client::UnusedType'
 
 PROTOCOL_TYPE_INFO = {
     'simple' : {
@@ -113,6 +111,17 @@ data_unit_multipliers = {
 }
 
 HUB_TYPE_PARAMETERS = ('C', 'A')
+
+def items(p):
+    if isinstance(p, dict):
+        return p.items()
+    else:
+        return p._items()
+
+def custom_sorted(p):
+    if not isinstance(p, list):
+        assert(false, p, "unexpected type")
+    return sorted(p, key = lambda p: p['name'])
 
 # ==============================================================================
 ## @name Filters
@@ -328,7 +337,7 @@ def _assure_unique_type_name(schemas, tn):
     if tn in schemas:
         tn += 'Nested'
         assert tn not in schemas
-    return unique_type_name(tn)
+    return tn
 
 # map a json type to an rust type
 # sn = schema name
@@ -349,7 +358,7 @@ def to_rust_type(schemas, sn, pn, t, allow_optionals=True, _is_recursive=False):
 
     def wrap_type(tn):
         if allow_optionals:
-            tn = "Option<%s>" % unique_type_name(tn)
+            tn = "Option<%s>" % tn
         return tn
 
     # unconditionally handle $ref types, which should point to another schema.
@@ -359,12 +368,12 @@ def to_rust_type(schemas, sn, pn, t, allow_optionals=True, _is_recursive=False):
         # usually is on on the first call, and off when recursion is involved.
         tn = t[TREF]
         if not _is_recursive and tn == sn:
-            tn = 'Option<Box<%s>>' % unique_type_name(tn)
+            tn = 'Option<Box<%s>>' % tn
         return wrap_type(tn)
     try:
         rust_type = TYPE_MAP[t['type']]
         if t['type'] == 'array':
-            return wrap_type("%s<%s>" % (rust_type, unique_type_name((nested_type(t)))))
+            return wrap_type("%s<%s>" % (rust_type, (nested_type(t))))
         elif t['type'] == 'object':
             if is_map_prop(t):
                 return wrap_type("%s<String, %s>" % (rust_type, nested_type(t)))
@@ -440,7 +449,7 @@ def schema_markers(s, c, transitive=True):
             continue
         has_activity = True
         # it should have at least one activity that matches it's type to qualify for the Resource trait
-        for fqan, iot in activities.iteritems():
+        for fqan, iot in activities.items():
             _, resource, _ = activity_split(fqan)
             if resource and activity_name_to_type_name(resource).lower() == sid.lower():
                 res.add(RESOURCE_MARKER_TRAIT)
@@ -504,7 +513,7 @@ def activity_name_to_type_name(an):
 
 # yields (category, resource, activity, activity_data)
 def iter_acitivities(c):
-    return ((activity_split(an) + [a]) for an, a in c.fqan_map.iteritems())
+    return ((activity_split(an) + [a]) for an, a in c.fqan_map.items())
 
 # return a list of parameter structures of all params of the given method dict
 # apply a prune filter to restrict the set of returned parameters.
@@ -512,7 +521,7 @@ def iter_acitivities(c):
 def _method_params(m, required=None, location=None):
     res = list()
     po = m.get('parameterOrder', [])
-    for pn, p in m.get('parameters', dict()).iteritems():
+    for pn, p in m.get('parameters', dict()).items():
         if required is not None and p.get('required', False) != required:
             continue
         if location is not None and p.get('location', '') != location:
@@ -565,13 +574,6 @@ def rust_copy_value_s(n, tn, p):
 def schema_to_required_property(s, n):
     return type(s)({'name': n, TREF: s.id, 'priority': REQUEST_PRIORITY, 'is_query_param': False})
 
-# Return relative URL format to the given schema. Handles structs and enums accordingly
-def schema_doc_format(s):
-    prefix = 'struct.'
-    if 'variant' in s:
-        prefix = 'enum.'
-    return prefix + '%s.html'
-
 def is_required_property(p):
     return p.get('required', False) or p.get('priority', 0) > 0
 
@@ -613,7 +615,7 @@ def method_media_params(m):
     # actually, one of them is required, but we can't encode that ...
     # runtime will have to check
     res = list()
-    for pn, proto in mu.protocols.iteritems():
+    for pn, proto in mu.protocols.items():
         # the pi (proto-info) dict can be shown to the user
         pi = {'multipart': proto.multipart and 'yes' or 'no', 'maxSize': mu.get('maxSize', '0kb'), 'validMimeTypes': mu.accept}
         try:
@@ -672,12 +674,12 @@ def new_context(schemas, resources, methods):
             res = dict()
         if fqan is None:
             fqan = dict()
-        for k,a in activities.iteritems():
+        for k,a in activities.items():
             if 'resources' in a:
                 build_activity_mappings(a.resources, res, fqan)
             if 'methods' not in a:
                 continue
-            for mn, m in a.methods.iteritems():
+            for mn, m in a.methods.items():
                 assert m.id not in fqan
                 category, resource, method = activity_split(m.id)
                 # This may be another name by which people try to find the method.
@@ -746,7 +748,8 @@ def new_context(schemas, resources, methods):
             # end this is already a perfectly valid type
 
             properties = s.get('properties', {'': s})
-            for pn, p in properties.iteritems():
+
+            for pn, p in items(properties):
                 link_used(p, rs)
                 if is_nested_type_property(p):
                     ns = deepcopy(p)
@@ -755,7 +758,7 @@ def new_context(schemas, resources, methods):
 
                     # To allow us recursing arrays, we simply put items one level up
                     if 'items' in p:
-                        ns.update((k, deepcopy(v)) for k, v in p.items.iteritems())
+                        ns.update((k, deepcopy(v)) for k, v in p.items.items())
 
                     recurse_properties(ns.id, ns, ns, append_unique(parent_ids, rs.id))
                 elif is_map_prop(p):
@@ -847,7 +850,7 @@ def library_to_crate_name(name, suffix=''):
 
 # return version like 0.1.0+2014031421
 def crate_version(build_version, revision):
-    return '%s+%s' % (build_version, isinstance(revision, basestring) and revision or '00000000')
+    return '%s+%s' % (build_version, isinstance(revision, str) and revision or '00000000')
 
 # return a crate name for us in extern crate statements
 def to_extern_crate_name(crate_name):
@@ -940,12 +943,6 @@ def mb_type_params_s(m):
 # as rb_additional_type_params, but for an individual method, as seen from a resource builder !
 def mb_additional_type_params(m):
     return []
-
-# check type_name against a list of reserved types, and return a possibly rename type_name to prevent a clash
-def unique_type_name(type_name):
-    if type_name in RESERVED_TYPES:
-        type_name += 'Type'
-    return type_name
 
 # return type name for a method on the given resource
 def mb_type(r, m):
